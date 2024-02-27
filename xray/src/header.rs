@@ -8,7 +8,7 @@ use std::{
     str::FromStr,
 };
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Clone, Copy, Debug)]
 pub enum SamplingDecision {
     /// Sampled indicates the current segment has been
     /// sampled and will be sent to the X-Ray daemon.
@@ -75,6 +75,7 @@ impl Header {
     /// HTTP header values should be the Display serialization of Header structs
     pub const NAME: &'static str = "X-Amzn-Trace-Id";
 
+    /// Creates a new Header with a given trace ID.
     pub fn new(trace_id: TraceId) -> Self {
         Header {
             trace_id,
@@ -82,23 +83,34 @@ impl Header {
         }
     }
 
+    /// Creates a new Header with the parent ID replaced.
     pub fn with_parent_id(
-        &mut self,
+        &self,
         parent_id: SegmentId,
-    ) -> &mut Self {
-        self.parent_id = Some(parent_id);
-        self
+    ) -> Self {
+        Self {
+            trace_id: self.trace_id.clone(),
+            parent_id: Some(parent_id),
+            sampling_decision: self.sampling_decision,
+            additional_data: self.additional_data.clone(),
+        }
     }
 
+    /// Creates a new Header with the sampling decision replaced.
     pub fn with_sampling_decision(
-        &mut self,
+        &self,
         decision: SamplingDecision,
-    ) -> &mut Self {
-        self.sampling_decision = decision;
-        self
+    ) -> Self {
+        Self {
+            trace_id: self.trace_id.clone(),
+            parent_id: self.parent_id.clone(),
+            sampling_decision: decision,
+            additional_data: self.additional_data.clone(),
+        }
     }
 
-    pub fn with_data<K, V>(
+    /// Inserts a key-value pair into the additional data map.
+    pub fn insert_data<K, V>(
         &mut self,
         key: K,
         value: V,
@@ -192,6 +204,44 @@ mod tests {
         assert_eq!(
             format!("{}", header),
             "Root=1-5759e988-bd862e3fe1be46a994272793"
+        );
+    }
+
+    #[test]
+    fn replace_parent_id() {
+        let header = Header {
+            trace_id: TraceId::Rendered("1-5759e988-bd862e3fe1be46a994272793".into()),
+            parent_id: Some(SegmentId::Rendered("53995c3f42cd8ad8".into())),
+            sampling_decision: SamplingDecision::Sampled,
+            ..Header::default()
+        };
+        assert_eq!(
+            header.with_parent_id(SegmentId::Rendered("35b167406b7746cf".into())),
+            Header {
+                trace_id: TraceId::Rendered("1-5759e988-bd862e3fe1be46a994272793".into()),
+                parent_id: Some(SegmentId::Rendered("35b167406b7746cf".into())),
+                sampling_decision: SamplingDecision::Sampled,
+                ..Header::default()
+            },
+        );
+    }
+
+    #[test]
+    fn replace_sampling_decision() {
+        let header = Header {
+            trace_id: TraceId::Rendered("1-5759e988-bd862e3fe1be46a994272793".into()),
+            parent_id: Some(SegmentId::Rendered("53995c3f42cd8ad8".into())),
+            sampling_decision: SamplingDecision::Sampled,
+            ..Header::default()
+        };
+        assert_eq!(
+            header.with_sampling_decision(SamplingDecision::NotSampled),
+            Header {
+                trace_id: TraceId::Rendered("1-5759e988-bd862e3fe1be46a994272793".into()),
+                parent_id: Some(SegmentId::Rendered("53995c3f42cd8ad8".into())),
+                sampling_decision: SamplingDecision::NotSampled,
+                ..Header::default()
+            },
         );
     }
 }
