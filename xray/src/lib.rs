@@ -43,10 +43,7 @@ impl Default for Client {
         let addr: SocketAddr = env::var("AWS_XRAY_DAEMON_ADDRESS")
             .ok()
             .and_then(|value| value.parse::<SocketAddr>().ok())
-            .unwrap_or_else(|| {
-                log::trace!("No valid `AWS_XRAY_DAEMON_ADDRESS` env variable detected falling back on default");
-                ([127, 0, 0, 1], 2000).into()
-            });
+            .unwrap_or_else(|| ([127, 0, 0, 1], 2000).into());
 
         Client::new(addr).expect("failed to connect to socket")
     }
