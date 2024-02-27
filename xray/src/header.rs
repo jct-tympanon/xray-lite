@@ -110,15 +110,7 @@ impl Header {
     }
 
     /// Inserts a key-value pair into the additional data map.
-    pub fn insert_data<K, V>(
-        &mut self,
-        key: K,
-        value: V,
-    ) -> &mut Self
-    where
-        K: Into<String>,
-        V: Into<String>,
-    {
+    pub fn insert_data(&mut self, key: impl Into<String>, value: impl Into<String>) -> &mut Self {
         self.additional_data.insert(key.into(), value.into());
         self
     }
