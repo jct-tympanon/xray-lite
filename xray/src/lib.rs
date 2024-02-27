@@ -53,7 +53,8 @@ impl Default for Client {
 }
 
 impl Client {
-    const HEADER: &'static [u8] = br#"{"format": "json", "version": 1}\n"#;
+    const HEADER: &'static [u8] = br#"{"format": "json", "version": 1}"#;
+    const DELIMITER: &'static [u8] = &[b'\n'];
 
     /// Return a new X-Ray client connected
     /// to the provided `addr`
@@ -70,7 +71,7 @@ impl Client {
         S: Serialize,
     {
         let bytes = serde_json::to_vec(&data)?;
-        Ok([Self::HEADER, &bytes].concat())
+        Ok([Self::HEADER, Self::DELIMITER, &bytes].concat())
     }
 
     /// send a segment to the xray daemon this client is connected to
@@ -96,7 +97,11 @@ mod tests {
                 "foo": "bar"
             }))
             .unwrap(),
-            br#"{"format": "json", "version": 1}\n{"foo":"bar"}"#.to_vec()
+            [
+                br#"{"format": "json", "version": 1}"# as &[u8],
+                &[b'\n'],
+                br#"{"foo":"bar"}"#,
+            ].concat()
         )
     }
 }
