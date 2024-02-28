@@ -1,6 +1,36 @@
 #![warn(missing_docs)]
 //#![deny(warnings)]
 //! Provides a client interface for [AWS X-Ray](https://aws.amazon.com/xray/)
+//!
+//! ### Example
+//!
+//! Here is an example to record a subsegment within a Lambda function
+//! invocation instrumented with AWS X-Ray:
+//!
+//! ```
+//! use xray::{Client, Context, SubsegmentContext};
+//!
+//! fn main() {
+//!    // reads AWS_XRAY_DAEMON_ADDRESS
+//!    # std::env::set_var("AWS_XRAY_DAEMON_ADDRESS", "127.0.0.1:2000");
+//!    let client = Client::from_lambda_env().unwrap();
+//!    // reads _X_AMZN_TRACE_ID
+//!    # std::env::set_var("_X_AMZN_TRACE_ID", "Root=1-65dfb5a1-0123456789abcdef01234567;Parent=0123456789abcdef;Sampled=1");
+//!    let context = SubsegmentContext::from_lambda_env(client).unwrap()
+//!        .with_name_prefix("readme-example.");
+//!
+//!    do_something(&context);
+//! }
+//!
+//! fn do_something(context: &dyn Context) {
+//!     // subsegment will have the name "readme-example.do_something"
+//!     let subsegment = context.enter_subsegment("do_something".to_string());
+//!
+//!     // do something time consuming ...
+//!
+//!     // the subsegment will be ended and reported when it is dropped
+//! }
+//! ```
 
 use serde::Serialize;
 use std::{
