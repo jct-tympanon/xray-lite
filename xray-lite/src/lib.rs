@@ -10,7 +10,7 @@
 //! within a Lambda function invocation instrumented with AWS X-Ray:
 //!
 //! ```
-//! use xray::{AwsNamespace, Client, Context, SubsegmentContext};
+//! use xray_lite::{AwsNamespace, Client, Context, SubsegmentContext};
 //!
 //! fn main() {
 //!    // reads AWS_XRAY_DAEMON_ADDRESS
@@ -48,7 +48,7 @@
 //! Lambda function invocation intstrumented with AWS X-Ray:
 //!
 //! ```
-//! use xray::{Client, Context, RemoteNamespace, SubsegmentContext};
+//! use xray_lite::{Client, Context, RemoteNamespace, SubsegmentContext};
 //!
 //! fn main() {
 //!    // reads AWS_XRAY_DAEMON_ADDRESS
@@ -82,7 +82,7 @@
 //! invocation intstrumented with AWS X-Ray:
 //!
 //! ```
-//! use xray::{Client, Context, CustomNamespace, SubsegmentContext};
+//! use xray_lite::{Client, Context, CustomNamespace, SubsegmentContext};
 //!
 //! fn main() {
 //!    // reads AWS_XRAY_DAEMON_ADDRESS
