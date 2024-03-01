@@ -2,13 +2,15 @@
 //#![deny(warnings)]
 //! Provides a client interface for [AWS X-Ray](https://aws.amazon.com/xray/)
 //!
-//! ### Example
+//! ### Examples
 //!
-//! Here is an example to record a subsegment within a Lambda function
-//! invocation instrumented with AWS X-Ray:
+//! #### Subsegment of AWS service operation
+//!
+//! Here is an example to record a subsegment of an AWS service operation
+//! within a Lambda function invocation instrumented with AWS X-Ray:
 //!
 //! ```
-//! use xray::{Client, Context, SubsegmentContext};
+//! use xray::{AwsNamespace, Client, Context as _, SubsegmentContext};
 //!
 //! fn main() {
 //!    // reads AWS_XRAY_DAEMON_ADDRESS
@@ -16,17 +18,25 @@
 //!    let client = Client::from_lambda_env().unwrap();
 //!    // reads _X_AMZN_TRACE_ID
 //!    # std::env::set_var("_X_AMZN_TRACE_ID", "Root=1-65dfb5a1-0123456789abcdef01234567;Parent=0123456789abcdef;Sampled=1");
-//!    let context = SubsegmentContext::from_lambda_env(client).unwrap()
-//!        .with_name_prefix("readme-example.");
+//!    let context = SubsegmentContext::from_lambda_env(client).unwrap();
 //!
-//!    do_something(&context);
+//!    do_s3_get_object(&context);
 //! }
 //!
-//! fn do_something(context: &dyn Context) {
-//!     // subsegment will have the name "readme-example.do_something"
-//!     let subsegment = context.enter_subsegment("do_something".to_string());
+//! fn do_s3_get_object(context: &SubsegmentContext) {
+//!     // subsegment will have the name "S3" and `aws.operation` "GetObject"
+//!     let subsegment = context.enter_subsegment(AwsNamespace::new("S3", "GetObject"));
 //!
-//!     // do something time consuming ...
+//!     // call S3 GetObject ...
+//!
+//!     // if you are using `aws-sdk-s3` crate, you can update the subsegment
+//!     // with the request ID. suppose `out` is the output of the `GetObject`
+//!     // operation:
+//!     //
+//!     //     subsegment
+//!     //         .namespace_mut()
+//!     //         .zip(out.request_id())
+//!     //         .map(|n, id| n.request_id(id));
 //!
 //!     // the subsegment will be ended and reported when it is dropped
 //! }
@@ -119,7 +129,9 @@ pub trait Context {
     ///
     /// [`SubsegmentSession`] records the end of the subsegment when it is
     /// dropped.
-    fn enter_subsegment(&self, name: String) -> SubsegmentSession;
+    fn enter_subsegment<T>(&self, namespace: T) -> SubsegmentSession<T>
+    where
+        T: Namespace + Send + Sync;
 }
 
 /// Context as a subsegment of an existing segment.
@@ -158,39 +170,56 @@ impl SubsegmentContext {
 }
 
 impl Context for SubsegmentContext {
-    fn enter_subsegment(&self, name: String) -> SubsegmentSession {
+    fn enter_subsegment<T>(&self, namespace: T) -> SubsegmentSession<T>
+    where
+        T: Namespace + Send + Sync,
+    {
         SubsegmentSession::new(
             self.client.clone(),
             &self.header,
-            format!("{}{}", self.name_prefix, name),
+            namespace,
+            &self.name_prefix,
         )
     }
 }
 
 /// Subsegment session.
-pub enum SubsegmentSession {
+pub enum SubsegmentSession<T>
+where
+    T: Namespace + Send + Sync,
+{
     /// Entered subsegment.
     Entered {
+        /// X-Ray client.
         client: Client,
+        /// X-Amzn-Trace-Id header.
         header: Header,
+        /// Subsegment.
         subsegment: Subsegment,
+        /// Namespace.
+        namespace: T,
     },
     /// Failed subsegment.
     Failed,
 }
 
-impl SubsegmentSession {
-    fn new(client: Client, header: &Header, name: impl Into<String>) -> Self {
-        let subsegment = Subsegment::begin(
+impl<T> SubsegmentSession<T>
+where
+    T: Namespace + Send + Sync,
+{
+    fn new(client: Client, header: &Header, namespace: T, name_prefix: &str) -> Self {
+        let mut subsegment = Subsegment::begin(
             header.trace_id.clone(),
             header.parent_id.clone(),
-            name,
+            namespace.name(name_prefix),
         );
+        namespace.update_subsegment(&mut subsegment);
         match client.send(&subsegment) {
             Ok(_) => Self::Entered {
                 client,
                 header: header.with_parent_id(subsegment.id.clone()),
                 subsegment,
+                namespace,
             },
             Err(_) => Self::Failed,
         }
@@ -203,17 +232,91 @@ impl SubsegmentSession {
             Self::Failed => None,
         }
     }
+
+    /// Returns the namespace as a mutable reference.
+    pub fn namespace_mut(&mut self) -> Option<&mut T> {
+        match self {
+            Self::Entered { namespace, .. } => Some(namespace),
+            Self::Failed => None,
+        }
+    }
 }
 
-impl Drop for SubsegmentSession {
+impl<T> Drop for SubsegmentSession<T>
+where
+    T: Namespace + Send + Sync,
+{
     fn drop(&mut self) {
         match self {
-            Self::Entered { client, subsegment, .. } => {
+            Self::Entered { client, subsegment, namespace, .. } => {
                 subsegment.end();
+                namespace.update_subsegment(subsegment);
                 let _ = client.send(subsegment)
                     .map_err(|e| eprintln!("failed to end subsegment: {e}"));
             }
             Self::Failed => (),
+        }
+    }
+}
+
+/// Namespace.
+pub trait Namespace {
+    /// Name of the namespace.
+    ///
+    /// `prefix` may be ignored.
+    fn name(&self, prefix: &str) -> String;
+
+    /// Updates the subsegment.
+    fn update_subsegment(&self, subsegment: &mut Subsegment);
+}
+
+/// Namespace for an AWS service.
+#[derive(Debug)]
+pub struct AwsNamespace {
+    service: String,
+    operation: String,
+    request_id: Option<String>,
+}
+
+impl AwsNamespace {
+    /// Creates a namespace for an AWS service operation.
+    pub fn new(service: impl Into<String>, operation: impl Into<String>) -> Self {
+        Self {
+            service: service.into(),
+            operation: operation.into(),
+            request_id: None,
+        }
+    }
+
+    /// Sets the request ID.
+    pub fn request_id(&mut self, request_id: impl Into<String>) -> &mut Self {
+        self.request_id = Some(request_id.into());
+        self
+    }
+}
+
+impl Namespace for AwsNamespace {
+    fn name(&self, _prefix: &str) -> String {
+        self.service.clone()
+    }
+
+    fn update_subsegment(&self, subsegment: &mut Subsegment) {
+        if subsegment.namespace.is_none() {
+            subsegment.namespace = Some("aws".to_string());
+        }
+        if let Some(aws) = subsegment.aws.as_mut() {
+            if aws.operation.is_none() {
+                aws.operation = Some(self.operation.clone());
+            }
+            if aws.request_id.is_none() {
+                aws.request_id = self.request_id.clone();
+            }
+        } else {
+            subsegment.aws = Some(AwsOperation {
+                operation: Some(self.operation.clone()),
+                request_id: self.request_id.clone(),
+                ..AwsOperation::default()
+            });
         }
     }
 }
