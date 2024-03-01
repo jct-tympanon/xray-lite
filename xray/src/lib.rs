@@ -10,7 +10,7 @@
 //! within a Lambda function invocation instrumented with AWS X-Ray:
 //!
 //! ```
-//! use xray::{AwsNamespace, Client, Context as _, SubsegmentContext};
+//! use xray::{AwsNamespace, Client, Context, SubsegmentContext};
 //!
 //! fn main() {
 //!    // reads AWS_XRAY_DAEMON_ADDRESS
@@ -23,7 +23,7 @@
 //!    do_s3_get_object(&context);
 //! }
 //!
-//! fn do_s3_get_object(context: &SubsegmentContext) {
+//! fn do_s3_get_object(context: &impl Context) {
 //!     // subsegment will have the name "S3" and `aws.operation` "GetObject"
 //!     let subsegment = context.enter_subsegment(AwsNamespace::new("S3", "GetObject"));
 //!
@@ -37,6 +37,40 @@
 //!     //         .namespace_mut()
 //!     //         .zip(out.request_id())
 //!     //         .map(|n, id| n.request_id(id));
+//!
+//!     // the subsegment will be ended and reported when it is dropped
+//! }
+//! ```
+//!
+//! #### Subsegment of remote service call
+//!
+//! Here is an example to record a subsegment of a remote service call within a
+//! Lambda function invocation intstrumented with AWS X-Ray:
+//!
+//! ```
+//! use xray::{Client, Context, RemoteNamespace, SubsegmentContext};
+//!
+//! fn main() {
+//!    // reads AWS_XRAY_DAEMON_ADDRESS
+//!    # std::env::set_var("AWS_XRAY_DAEMON_ADDRESS", "127.0.0.1:2000");
+//!    let client = Client::from_lambda_env().unwrap();
+//!    // reads _X_AMZN_TRACE_ID
+//!    # std::env::set_var("_X_AMZN_TRACE_ID", "Root=1-65dfb5a1-0123456789abcdef01234567;Parent=0123456789abcdef;Sampled=1");
+//!    let context = SubsegmentContext::from_lambda_env(client).unwrap();
+//!
+//!    do_some_request(&context);
+//! }
+//!
+//! fn do_some_request(context: &impl Context) {
+//!     // subsegment will have the name "readme example",
+//!     // `http.request.method` "POST", and `http.request.url` "https://codemonger.io/"
+//!     let subsegment = context.enter_subsegment(RemoteNamespace::new(
+//!         "readme example",
+//!         "GET",
+//!         "https://codemonger.io/",
+//!     ));
+//!
+//!     // do some request ...
 //!
 //!     // the subsegment will be ended and reported when it is dropped
 //! }
@@ -316,6 +350,66 @@ impl Namespace for AwsNamespace {
                 operation: Some(self.operation.clone()),
                 request_id: self.request_id.clone(),
                 ..AwsOperation::default()
+            });
+        }
+    }
+}
+
+/// Namespace for an arbitrary remote service.
+#[derive(Debug)]
+pub struct RemoteNamespace {
+    name: String,
+    method: String,
+    url: String,
+}
+
+impl RemoteNamespace {
+    /// Creates a namespace for a remote service.
+    pub fn new(
+        name: impl Into<String>,
+        method: impl Into<String>,
+        url: impl Into<String>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            method: method.into(),
+            url: url.into(),
+        }
+    }
+}
+
+impl Namespace for RemoteNamespace {
+    fn name(&self, _prefix: &str) -> String {
+        self.name.clone()
+    }
+
+    fn update_subsegment(&self, subsegment: &mut Subsegment) {
+        if subsegment.namespace.is_none() {
+            subsegment.namespace = Some("remote".to_string());
+        }
+        if let Some(http) = subsegment.http.as_mut() {
+            if let Some(request) = http.request.as_mut() {
+                if request.method.is_none() {
+                    request.method = Some(self.method.clone());
+                }
+                if request.url.is_none() {
+                    request.url = Some(self.url.clone());
+                }
+            } else {
+                http.request = Some(Request {
+                    url: Some(self.url.clone()),
+                    method: Some(self.method.clone()),
+                    ..Request::default()
+                });
+            }
+        } else {
+            subsegment.http = Some(Http {
+                request: Some(Request {
+                    url: Some(self.url.clone()),
+                    method: Some(self.method.clone()),
+                    ..Request::default()
+                }),
+                ..Http::default()
             });
         }
     }
