@@ -287,11 +287,7 @@ pub struct Response {
 
 impl Subsegment {
     /// Create a new subsegment
-    pub fn begin<N>(
-        trace_id: TraceId,
-        parent_id: Option<SegmentId>,
-        name: N,
-    ) -> Self
+    pub fn begin<N>(trace_id: TraceId, parent_id: Option<SegmentId>, name: N) -> Self
     where
         N: Into<String>,
     {

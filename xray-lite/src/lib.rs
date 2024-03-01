@@ -175,10 +175,7 @@ impl Client {
     }
 
     /// send a segment to the xray daemon this client is connected to
-    pub fn send<S>(
-        &self,
-        data: &S,
-    ) -> Result<()>
+    pub fn send<S>(&self, data: &S) -> Result<()>
     where
         S: Serialize,
     {
@@ -315,10 +312,16 @@ where
 {
     fn drop(&mut self) {
         match self {
-            Self::Entered { client, subsegment, namespace, .. } => {
+            Self::Entered {
+                client,
+                subsegment,
+                namespace,
+                ..
+            } => {
                 subsegment.end();
                 namespace.update_subsegment(subsegment);
-                let _ = client.send(subsegment)
+                let _ = client
+                    .send(subsegment)
                     .map_err(|e| eprintln!("failed to end subsegment: {e}"));
             }
             Self::Failed => (),
@@ -398,11 +401,7 @@ pub struct RemoteNamespace {
 
 impl RemoteNamespace {
     /// Creates a namespace for a remote service.
-    pub fn new(
-        name: impl Into<String>,
-        method: impl Into<String>,
-        url: impl Into<String>,
-    ) -> Self {
+    pub fn new(name: impl Into<String>, method: impl Into<String>, url: impl Into<String>) -> Self {
         Self {
             name: name.into(),
             method: method.into(),
@@ -484,7 +483,8 @@ mod tests {
                 br#"{"format": "json", "version": 1}"# as &[u8],
                 &[b'\n'],
                 br#"{"foo":"bar"}"#,
-            ].concat()
+            ]
+            .concat()
         )
     }
 }

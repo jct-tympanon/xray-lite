@@ -36,10 +36,7 @@ impl<'a> From<&'a str> for SamplingDecision {
 }
 
 impl Display for SamplingDecision {
-    fn fmt(
-        &self,
-        f: &mut fmt::Formatter,
-    ) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
             "{}",
@@ -84,10 +81,7 @@ impl Header {
     }
 
     /// Creates a new Header with the parent ID replaced.
-    pub fn with_parent_id(
-        &self,
-        parent_id: SegmentId,
-    ) -> Self {
+    pub fn with_parent_id(&self, parent_id: SegmentId) -> Self {
         Self {
             trace_id: self.trace_id.clone(),
             parent_id: Some(parent_id),
@@ -97,10 +91,7 @@ impl Header {
     }
 
     /// Creates a new Header with the sampling decision replaced.
-    pub fn with_sampling_decision(
-        &self,
-        decision: SamplingDecision,
-    ) -> Self {
+    pub fn with_sampling_decision(&self, decision: SamplingDecision) -> Self {
         Self {
             trace_id: self.trace_id.clone(),
             parent_id: self.parent_id.clone(),
@@ -140,10 +131,7 @@ impl FromStr for Header {
 }
 
 impl Display for Header {
-    fn fmt(
-        &self,
-        f: &mut fmt::Formatter,
-    ) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Root={}", self.trace_id)?;
         if let Some(parent) = &self.parent_id {
             write!(f, ";Parent={}", parent)?;

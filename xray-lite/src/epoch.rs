@@ -52,16 +52,10 @@ struct SecondsVisitor;
 impl<'de> de::Visitor<'de> for SecondsVisitor {
     type Value = Seconds;
 
-    fn expecting(
-        &self,
-        formatter: &mut fmt::Formatter,
-    ) -> fmt::Result {
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         formatter.write_str("a string value")
     }
-    fn visit_f64<E>(
-        self,
-        value: f64,
-    ) -> Result<Seconds, E>
+    fn visit_f64<E>(self, value: f64) -> Result<Seconds, E>
     where
         E: de::Error,
     {
@@ -70,10 +64,7 @@ impl<'de> de::Visitor<'de> for SecondsVisitor {
 }
 
 impl ser::Serialize for Seconds {
-    fn serialize<S>(
-        &self,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error>
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {

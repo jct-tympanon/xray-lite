@@ -4,10 +4,7 @@ use std::fmt;
 pub(crate) struct Bytes<'a>(pub(crate) &'a [u8]);
 
 impl fmt::LowerHex for Bytes<'_> {
-    fn fmt(
-        &self,
-        fmt: &mut fmt::Formatter<'_>,
-    ) -> fmt::Result {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         for byte in self.0 {
             fmt.write_fmt(format_args!("{:02x}", byte))?
         }
