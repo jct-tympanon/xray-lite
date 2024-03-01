@@ -1,6 +1,6 @@
 [package]
 name = "xray"
-version = "0.0.0"
+version = "0.0.2"
 authors = ["softprops <d.tangren@gmail.com>"]
 edition = "2018"
 description = "AWS X-Ray daemon client for Rust"
