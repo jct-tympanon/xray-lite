@@ -36,7 +36,7 @@
 //!     //     subsegment
 //!     //         .namespace_mut()
 //!     //         .zip(out.request_id())
-//!     //         .map(|n, id| n.request_id(id));
+//!     //         .map(|(ns, id)| ns.request_id(id));
 //!
 //!     // the subsegment will be ended and reported when it is dropped
 //! }
