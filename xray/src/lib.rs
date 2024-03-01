@@ -75,6 +75,36 @@
 //!     // the subsegment will be ended and reported when it is dropped
 //! }
 //! ```
+//!
+//! #### Custom subsegment
+//!
+//! Here is an example to record a custom subsegment within a Lambda function
+//! invocation intstrumented with AWS X-Ray:
+//!
+//! ```
+//! use xray::{Client, Context, CustomNamespace, SubsegmentContext};
+//!
+//! fn main() {
+//!    // reads AWS_XRAY_DAEMON_ADDRESS
+//!    # std::env::set_var("AWS_XRAY_DAEMON_ADDRESS", "127.0.0.1:2000");
+//!    let client = Client::from_lambda_env().unwrap();
+//!    // reads _X_AMZN_TRACE_ID
+//!    # std::env::set_var("_X_AMZN_TRACE_ID", "Root=1-65dfb5a1-0123456789abcdef01234567;Parent=0123456789abcdef;Sampled=1");
+//!    let context = SubsegmentContext::from_lambda_env(client).unwrap()
+//!        .with_name_prefix("readme_example.");
+//!
+//!    do_something(&context);
+//! }
+//!
+//! fn do_something(context: &impl Context) {
+//!     // subsegment will have the name "readme_example.do_something"
+//!     let subsegment = context.enter_subsegment(CustomNamespace::new("do_something"));
+//!
+//!     // do some thing ...
+//!
+//!     // the subsegment will be ended and reported when it is dropped
+//! }
+//! ```
 
 use serde::Serialize;
 use std::{
@@ -194,6 +224,9 @@ impl SubsegmentContext {
     }
 
     /// Updates the context with a given name prefix.
+    ///
+    /// The name prefix is prepended to the name of every custom subsegment.
+    /// Only subsegments associated with [`CustomNamespace`] are affected.
     pub fn with_name_prefix(self, prefix: impl Into<String>) -> Self {
         Self {
             client: self.client,
@@ -413,6 +446,28 @@ impl Namespace for RemoteNamespace {
             });
         }
     }
+}
+
+/// Namespace for a custom subsegment.
+#[derive(Debug)]
+pub struct CustomNamespace {
+    name: String,
+}
+
+impl CustomNamespace {
+    /// Creates a namespace for a custom subsegment.
+    pub fn new(name: impl Into<String>) -> Self {
+        Self { name: name.into() }
+    }
+}
+
+impl Namespace for CustomNamespace {
+    fn name(&self, prefix: &str) -> String {
+        format!("{}{}", prefix, self.name)
+    }
+
+    // does nothing
+    fn update_subsegment(&self, _subsegment: &mut Subsegment) {}
 }
 
 #[cfg(test)]
