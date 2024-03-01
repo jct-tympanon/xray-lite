@@ -1,4 +1,4 @@
-# xray
+# xray-lite
 
 > [AWS X-Ray](https://aws.amazon.com/xray/) daemon client for Rust applications on [AWS Lambda](https://aws.amazon.com/lambda/)
 
@@ -8,7 +8,7 @@ Add the following to your `Cargo.toml` file:
 
 ```toml
 [dependencies]
-xray = { git = "https://github.com/codemonger-io/xray.git", tag = "v0.0.2" }
+xray-lite = { git = "https://github.com/codemonger-io/xray-lite.git", tag = "v0.0.3" }
 ```
 
 ## Usage
@@ -18,7 +18,7 @@ xray = { git = "https://github.com/codemonger-io/xray.git", tag = "v0.0.2" }
 Here is an example to record a subsegment of an AWS service operation within a Lambda function invocation instrumented with AWS X-Ray:
 
 ```rust
-use xray::{AwsNamespace, Client, Context, SubsegmentContext};
+use xray_lite::{AwsNamespace, Client, Context, SubsegmentContext};
 
 fn main() {
    // reads AWS_XRAY_DAEMON_ADDRESS
@@ -53,7 +53,7 @@ fn do_s3_get_object(context: &impl Context) {
 Here is an example to record a subsegment of a remote service call within a Lambda function invocation instrumented with AWS X-Ray:
 
 ```rust
-use xray::{Client, Context, RemoteNamespace, SubsegmentContext};
+use xray_lite::{Client, Context, RemoteNamespace, SubsegmentContext};
 
 fn main() {
    // reads AWS_XRAY_DAEMON_ADDRESS
@@ -84,7 +84,7 @@ fn do_some_request(context: &impl Context) {
 Here is an example to record a custom subsegment within a Lambda function invocation instrumented with AWS X-Ray:
 
 ```rust
-use xray::{Client, Context, CustomNamespace, SubsegmentContext};
+use xray_lite::{Client, Context, CustomNamespace, SubsegmentContext};
 
 fn main() {
    // reads AWS_XRAY_DAEMON_ADDRESS
@@ -108,4 +108,4 @@ fn do_something(context: &impl Context) {
 
 ## Acknowledgements
 
-[Doug Tangren (softprops)](https://github.com/softprops) 2018
+This project is built on top of the [great work](https://github.com/softprops/xray) of [Doug Tangren (softprops)](https://github.com/softprops).
