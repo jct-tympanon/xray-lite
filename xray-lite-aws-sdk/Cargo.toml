@@ -1,6 +1,6 @@
 [package]
 name = "xray-lite-aws-sdk"
-version = "0.0.1"
+version = "0.0.2"
 atuthors = ["Kikuo Emoto <kemoto@codemonger.io>"]
 edition = "2021"
 description = "xray-lite extension for AWS SDK for Rust"
@@ -15,9 +15,9 @@ repository = "https://github.com/codemonger-io/xray-lite"
 name = "xray_lite_aws_sdk"
 
 [dependencies]
-aws-smithy-runtime-api = { version = "1.1.7", features = ["client"] }
-aws-smithy-types = "1.1.7"
-aws-types = "1.1.7"
+aws-smithy-runtime-api = { version = "1.1", features = ["client"] }
+aws-smithy-types = "1.1"
+aws-types = "1.1"
 xray-lite = { path = "../xray-lite" }
 
 [dev-dependencies]
