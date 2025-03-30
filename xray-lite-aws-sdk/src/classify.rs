@@ -1,8 +1,13 @@
-//! provides the [`ClassifyAwsIntercept`] SDK interceptor, which propagates trace context to downstream
-//! SDK calls and publishes SDK operation segments to the lambda XRay daemon. AWS service operations
-//! are recognized by an instance of [`RequestClassifier`].
+//! Provides the [`ClassifyAwsIntercept`] SDK interceptor, which propagates trace context to downstream
+//! SDK calls and publishes SDK call segments to the lambda XRay daemon.
 //! 
-//! The behavior of this interceptor is designed to be best-effort. Failure to collect or transmit XRay segments
+//! The interceptor uses two strategy traits:
+//! - [`RequestClassifier`] inspects the outbound Smithy Request to determine the target AWS service and operation.
+//! - [`ContextLookup`] provides the parent trace_id and segment_id for outbound AWS service calls.
+//! 
+//! Default implementations are provided for both traits.
+//! 
+//! XRay reporting from this interceptor is best-effort. Failure to collect or transmit XRay segments
 //! or trace data will not panic or disrupt request processing.
 //! 
 //! ## Example
@@ -11,11 +16,13 @@
 //! use xray_lite_aws_sdk::ClassifyAwsIntercept;
 //!
 //! async fn get_object_from_s3() {
-//!     let classifier = ClassifyAwsIntercept::from_lambda_env().unwrap();
+//!     let interceptor = ClassifyAwsIntercept::from_lambda_env().unwrap();
 //!
 //!     let config = aws_config::load_defaults(BehaviorVersion::latest()).await;
-//!     let s3_config = aws_sdk_s3::Config::new(&sdk_config).to_builder().interceptor(classifier).build();
+//!     let s3_config = aws_sdk_s3::Config::new(&sdk_config).to_builder().interceptor(interceptor).build();
 //!     let s3_client = aws_sdk_s3::Client::from_conf(s3_config);
+//! 
+//!     // The trace for this lambda invocation will now include an S3.GetObject segment.
 //!     s3_client
 //!         .get_object()
 //!         .bucket("the-bucket-name")
@@ -44,7 +51,7 @@ use aws_smithy_runtime_api::http::Request;
 use aws_smithy_types::config_bag::{ConfigBag, Storable, StoreReplace};
 use aws_types::request_id::RequestId;
 use url::Url;
-use xray_lite::{AwsNamespace, Client as XRayClient, Context, DaemonClient, Error as XRayError, Header, SubsegmentContext, SubsegmentSession};
+use xray_lite::{AwsNamespace, Client as XRayClient, Context, DaemonClient, Header, SubsegmentContext, SubsegmentSession};
 
 /// helper to extract the first value from a key-value pair iterator where the key
 /// matches the given name, case-insensitive. Works for both Url query parameters and
@@ -61,6 +68,26 @@ macro_rules! first_with_name {
          )
          .next()
     };
+}
+
+/// A strategy interface which provides the parent trace_id and segment_id for an SDK call.
+/// The standard implementation is [`LambdaContextLookup`], which reads the trace_id and parent
+/// segment from the lambda environment. Applications can provide their own implementation
+/// if there are custom segments in between the lambda invocation and SDK calls, for example
+/// captured by application tracing interceptors.
+pub trait ContextLookup: Debug + Send + Sync {
+    /// Get the enclosing xray context for the caller.
+    fn lookup_context<C: XRayClient>(&self, client: C) -> xray_lite::Result<SubsegmentContext<C>>;
+}
+
+/// The standard implementation of [`ContextLookup`], which reads the trace and segment
+/// identifiers from lambda environment variables.
+#[derive(Debug)]
+pub struct LambdaContextLookup;
+impl ContextLookup for LambdaContextLookup {
+    fn lookup_context<C: XRayClient>(&self, client: C) -> xray_lite::Result<SubsegmentContext<C>> {
+        SubsegmentContext::from_lambda_env(client)
+    }
 }
 
 /// A strategy to decode an outbound SDK request into an instance of [`AwsNamespace`].
@@ -113,6 +140,9 @@ impl S3RequestClassifier {
     /// Classify the given URL if it targets an S3 endpoint and specifies the 'x-id' parameter.
     /// Otherwise, returns None.
     pub fn classify_url(url: &Url) -> Option<AwsNamespace> {
+        // x-id is not part of documented S3 unfortunately. however it is a consistent behavior
+        // in the current rust SDK. we cover this with a unit test; it may be necessary to switch 
+        // to a more robust strategy if a future SDK change breaks us.
         url.aws_service_code()
             .filter(|code| *code == "s3")
             .and_then(|_| first_with_name!(url.query_pairs(), "x-id"))
@@ -182,32 +212,43 @@ impl<C> CurrentSubsegment<C>
     }
 }
 
-/// A Smithy interceptor which publishes trace segments to the lambda XRay daemon for any recognized AWS operations.
+/// A type alias for default interceptor configuration in a lambda execution environment.
+pub type StandardLambdaIntercept = ClassifyAwsIntercept<DaemonClient, KnownServices, LambdaContextLookup>;
+
+/// A Smithy interceptor which publishes SDK trace segments to the lambda XRay daemon.
 #[derive(Debug)]
-pub struct ClassifyAwsIntercept<C: XRayClient + 'static, I: RequestClassifier> {
+pub struct ClassifyAwsIntercept<C, I, L> 
+    where C: XRayClient + 'static,
+          I: RequestClassifier,
+          L: ContextLookup,
+{
     client: C,
     classifier: I,
+    lookup: L
 }
-impl<C, I> ClassifyAwsIntercept<C, I> 
-    where C: XRayClient + 'static,
-          I: RequestClassifier + 'static
+impl<C, I, L> ClassifyAwsIntercept<C, I, L> 
+    where C: XRayClient,
+          I: RequestClassifier,
+          L: ContextLookup
 {
     /// Create the interceptor using a [`DaemonClient`] and an instance of [`KnownServices`] to classify outbound AWS requests.
     /// ## Returns
     /// - Err if the client could not be initialized
-    pub fn from_lambda_env() -> Result<ClassifyAwsIntercept<DaemonClient, KnownServices>, XRayError> {
+    pub fn from_lambda_env() -> xray_lite::Result<StandardLambdaIntercept> {
         let client = DaemonClient::from_lambda_env()?;
-        Ok(ClassifyAwsIntercept::new(client, KnownServices))
+        Ok(ClassifyAwsIntercept::new(client, KnownServices, LambdaContextLookup))
     }
 
-    /// Create the interceptor using a provided [`XRayClient`] and [`RequestClassifier`]. The [`RequestClassifier`] is responsible
-    /// for identifying the AWS Service and Operation of each outbound SDK operation.
-    pub fn new(client: C, classifier: I) -> Self {
-        Self { client, classifier }
+    /// Create the interceptor using a provided [`XRayClient`], [`RequestClassifier`], and [`ContextLookup`]. 
+    pub fn new(client: C, classifier: I, lookup: L) -> Self {
+        Self { client, classifier, lookup }
     }
 }
 
-impl<C: XRayClient, I: RequestClassifier> Intercept for ClassifyAwsIntercept<C, I>
+impl<C, I, L> Intercept for ClassifyAwsIntercept<C, I, L>
+    where C: XRayClient,
+          I: RequestClassifier,
+          L: ContextLookup
 {
     fn name(&self) -> &'static str {
         "XRayIntercept"
@@ -220,7 +261,7 @@ impl<C: XRayClient, I: RequestClassifier> Intercept for ClassifyAwsIntercept<C, 
         cfg: &mut ConfigBag,
     ) -> Result<(), BoxError> {
         if let Some(op) = self.classifier.classify_request(context.request()) {
-            if let Ok(segment) = SubsegmentContext::from_lambda_env(self.client.clone()) {
+            if let Ok(segment) = self.lookup.lookup_context(self.client.clone()) {
                 let session = segment.enter_subsegment(op);
                 if let Some(trace_id) = session.x_amzn_trace_id() {
                     context
@@ -266,7 +307,7 @@ mod tests {
     use url::Url;
     use xray_lite::{AwsNamespace, Client};
 
-    use super::{AwsServiceUrl, ClassifyAwsIntercept, KnownServices, S3RequestClassifier};
+    use super::{AwsServiceUrl, ClassifyAwsIntercept, KnownServices, LambdaContextLookup, S3RequestClassifier};
 
     macro_rules! test_sdk_client {
         ($client_crate:ident, $replay_client:expr, $xray_client:expr) => {
@@ -282,7 +323,7 @@ mod tests {
                     ))
                     .region($client_crate::config::Region::new("us-east-1"))
                     .http_client($replay_client.clone())
-                    .interceptor(ClassifyAwsIntercept::new($xray_client.clone(), KnownServices))
+                    .interceptor(ClassifyAwsIntercept::new($xray_client.clone(), KnownServices, LambdaContextLookup))
                     .build(),
             )
         };
