@@ -1,7 +1,7 @@
 [package]
 name = "xray-lite-aws-sdk"
 version = "0.0.4"
-atuthors = ["Kikuo Emoto <kemoto@codemonger.io>"]
+authors = ["Kikuo Emoto <kemoto@codemonger.io>"]
 edition = "2021"
 description = "xray-lite extension for AWS SDK for Rust"
 license = "MIT"
@@ -15,12 +15,25 @@ categories = ["development-tools::debugging", "development-tools::profiling"]
 [lib]
 name = "xray_lite_aws_sdk"
 
+[features]
+classify = [ "dep:url" ]
+
 [dependencies]
-aws-smithy-runtime-api = { version = "1.1", features = ["client"] }
-aws-smithy-types = "1.1"
-aws-types = "1.1"
+aws-smithy-runtime-api = { version = "1.7.4", features = ["client"] }
+aws-smithy-types = "1.3.0"
+aws-types = "1.3.6"
 xray-lite = { path = "../xray-lite", version = "0.0.9" }
 
+# runtime plugin dependencies
+url = { version = "2.5.4", optional = true }
+
 [dev-dependencies]
-aws-config = "1.1.8"
-aws-sdk-s3 = "1.18.0"
+aws-config = "1.6.1"
+aws-sdk-dynamodb = "1.71.0"
+aws-sdk-s3 = "1.81.0"
+aws-smithy-runtime = { version = "1.8.1", features = [ "test-util" ] }
+http = "1.3.1"
+serde = { workspace = true, features = [ "derive" ]}
+serde_json = { workspace = true }
+serial_test = "3.2.0"
+tokio = { version = "1.44.1", features = [ "rt", "macros" ] }

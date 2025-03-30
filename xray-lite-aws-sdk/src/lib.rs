@@ -49,6 +49,9 @@ use aws_types::request_id::RequestId;
 
 use xray_lite::{AwsNamespace, Context, Header, SubsegmentSession};
 
+#[cfg(feature = "classify")]
+pub mod classify;
+
 /// Extension of [`Context`].
 ///
 /// This trait is automatically implemented for any [`Context`] that satisfies
