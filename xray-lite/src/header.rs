@@ -52,12 +52,16 @@ impl Display for SamplingDecision {
     }
 }
 
-/// Parsed representation of `X-Amzn-Trace-Id` request header
+/// Parsed representation of `X-Amzn-Trace-Id` request header, which
+/// contains the XRay scope for the currently executing lambda invocation.
 #[derive(PartialEq, Clone, Debug, Default)]
 pub struct Header {
-    pub(crate) trace_id: TraceId,
-    pub(crate) parent_id: Option<SegmentId>,
-    pub(crate) sampling_decision: SamplingDecision,
+    /// The top-level trace id for this lambda invocation.
+    pub trace_id: TraceId,
+    /// The current segment id for this lambda invocation, if any.
+    pub parent_id: Option<SegmentId>,
+    /// The xray sampling decision for this lambda invocation.
+    pub sampling_decision: SamplingDecision,
     additional_data: HashMap<String, String>,
 }
 

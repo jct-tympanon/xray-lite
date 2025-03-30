@@ -38,12 +38,16 @@ impl<C> SubsegmentContext<C> {
     /// Please refer to the [AWS documentation](https://docs.aws.amazon.com/lambda/latest/dg/configuration-envvars.html#configuration-envvars-runtime)
     /// for more details.
     pub fn from_lambda_env(client: C) -> Result<Self> {
-        let header = lambda::header()?;
-        Ok(Self {
+        Ok(Self::with_header(client, lambda::header()?))
+    }
+
+    /// Creates a new context from provided [`Header`] information.
+    pub fn with_header(client: C, header: Header) -> Self {
+        Self {
             client,
             header,
             name_prefix: "".to_string(),
-        })
+        }
     }
 
     /// Updates the context with a given name prefix.

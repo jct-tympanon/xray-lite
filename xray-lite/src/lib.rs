@@ -134,6 +134,7 @@ pub use crate::{
     epoch::Seconds,
     error::{Error, Result},
     header::Header,
+    lambda::header,
     namespace::{AwsNamespace, CustomNamespace, Namespace, RemoteNamespace},
     segment::*,
     segment_id::SegmentId,
