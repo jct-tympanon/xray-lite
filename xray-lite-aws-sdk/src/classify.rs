@@ -70,6 +70,85 @@ macro_rules! first_with_name {
     };
 }
 
+/// A type alias for default interceptor configuration in a lambda execution environment.
+pub type StandardLambdaIntercept = ClassifyAwsIntercept<DaemonClient, KnownServices, LambdaContextLookup>;
+
+/// A Smithy interceptor which publishes SDK trace segments to the lambda XRay daemon.
+#[derive(Debug)]
+pub struct ClassifyAwsIntercept<C, I, L> 
+    where C: XRayClient + 'static,
+          I: RequestClassifier,
+          L: ContextLookup,
+{
+    client: C,
+    classifier: I,
+    lookup: L
+}
+impl<C, I, L> ClassifyAwsIntercept<C, I, L> 
+    where C: XRayClient,
+          I: RequestClassifier,
+          L: ContextLookup
+{
+    /// Create the interceptor using a [`DaemonClient`] and an instance of [`KnownServices`] to classify outbound AWS requests.
+    /// ## Returns
+    /// - Err if the client could not be initialized
+    pub fn from_lambda_env() -> xray_lite::Result<StandardLambdaIntercept> {
+        let client = DaemonClient::from_lambda_env()?;
+        Ok(ClassifyAwsIntercept::new(client, KnownServices, LambdaContextLookup))
+    }
+
+    /// Create the interceptor using a provided [`XRayClient`], [`RequestClassifier`], and [`ContextLookup`]. 
+    pub fn new(client: C, classifier: I, lookup: L) -> Self {
+        Self { client, classifier, lookup }
+    }
+}
+
+impl<C, I, L> Intercept for ClassifyAwsIntercept<C, I, L>
+    where C: XRayClient,
+          I: RequestClassifier,
+          L: ContextLookup
+{
+    fn name(&self) -> &'static str {
+        "XRayIntercept"
+    }
+
+    fn modify_before_transmit(
+        &self,
+        context: &mut BeforeTransmitInterceptorContextMut<'_>,
+        _runtime_components: &RuntimeComponents,
+        cfg: &mut ConfigBag,
+    ) -> Result<(), BoxError> {
+        if let Some(op) = self.classifier.classify_request(context.request()) {
+            if let Ok(segment) = self.lookup.lookup_context(self.client.clone()) {
+                let session = segment.enter_subsegment(op);
+                if let Some(trace_id) = session.x_amzn_trace_id() {
+                    context
+                        .request_mut()
+                        .headers_mut()
+                        .insert(Header::NAME, trace_id);
+                }
+                cfg.interceptor_state().store_put(CurrentSubsegment(RwLock::new(session)));
+            }
+        }
+        Ok(())
+    }
+
+    fn read_after_attempt(
+        &self,
+        context: &FinalizerInterceptorContextRef<'_>,
+        _runtime_components: &RuntimeComponents,
+        cfg: &mut ConfigBag,
+    ) -> Result<(), BoxError> {
+
+        if let Some(session) = cfg.interceptor_state().load::<CurrentSubsegment<C>>() {
+            session.finalize(context);
+            // remove segment from the bag so that it can be dropped and transmitted to the daemon.
+            cfg.interceptor_state().unset::<CurrentSubsegment<C>>();
+        }
+        Ok(())
+    }
+}
+
 /// A strategy interface which provides the parent trace_id and segment_id for an SDK call.
 /// The standard implementation is [`LambdaContextLookup`], which reads the trace_id and parent
 /// segment from the lambda environment. Applications can provide their own implementation
@@ -209,85 +288,6 @@ impl<C> CurrentSubsegment<C>
                 }
             }
         }
-    }
-}
-
-/// A type alias for default interceptor configuration in a lambda execution environment.
-pub type StandardLambdaIntercept = ClassifyAwsIntercept<DaemonClient, KnownServices, LambdaContextLookup>;
-
-/// A Smithy interceptor which publishes SDK trace segments to the lambda XRay daemon.
-#[derive(Debug)]
-pub struct ClassifyAwsIntercept<C, I, L> 
-    where C: XRayClient + 'static,
-          I: RequestClassifier,
-          L: ContextLookup,
-{
-    client: C,
-    classifier: I,
-    lookup: L
-}
-impl<C, I, L> ClassifyAwsIntercept<C, I, L> 
-    where C: XRayClient,
-          I: RequestClassifier,
-          L: ContextLookup
-{
-    /// Create the interceptor using a [`DaemonClient`] and an instance of [`KnownServices`] to classify outbound AWS requests.
-    /// ## Returns
-    /// - Err if the client could not be initialized
-    pub fn from_lambda_env() -> xray_lite::Result<StandardLambdaIntercept> {
-        let client = DaemonClient::from_lambda_env()?;
-        Ok(ClassifyAwsIntercept::new(client, KnownServices, LambdaContextLookup))
-    }
-
-    /// Create the interceptor using a provided [`XRayClient`], [`RequestClassifier`], and [`ContextLookup`]. 
-    pub fn new(client: C, classifier: I, lookup: L) -> Self {
-        Self { client, classifier, lookup }
-    }
-}
-
-impl<C, I, L> Intercept for ClassifyAwsIntercept<C, I, L>
-    where C: XRayClient,
-          I: RequestClassifier,
-          L: ContextLookup
-{
-    fn name(&self) -> &'static str {
-        "XRayIntercept"
-    }
-
-    fn modify_before_transmit(
-        &self,
-        context: &mut BeforeTransmitInterceptorContextMut<'_>,
-        _runtime_components: &RuntimeComponents,
-        cfg: &mut ConfigBag,
-    ) -> Result<(), BoxError> {
-        if let Some(op) = self.classifier.classify_request(context.request()) {
-            if let Ok(segment) = self.lookup.lookup_context(self.client.clone()) {
-                let session = segment.enter_subsegment(op);
-                if let Some(trace_id) = session.x_amzn_trace_id() {
-                    context
-                        .request_mut()
-                        .headers_mut()
-                        .insert(Header::NAME, trace_id);
-                }
-                cfg.interceptor_state().store_put(CurrentSubsegment(RwLock::new(session)));
-            }
-        }
-        Ok(())
-    }
-
-    fn read_after_attempt(
-        &self,
-        context: &FinalizerInterceptorContextRef<'_>,
-        _runtime_components: &RuntimeComponents,
-        cfg: &mut ConfigBag,
-    ) -> Result<(), BoxError> {
-
-        if let Some(session) = cfg.interceptor_state().load::<CurrentSubsegment<C>>() {
-            session.finalize(context);
-            // remove segment from the bag so that it can be dropped and transmitted to the daemon.
-            cfg.interceptor_state().unset::<CurrentSubsegment<C>>();
-        }
-        Ok(())
     }
 }
 
