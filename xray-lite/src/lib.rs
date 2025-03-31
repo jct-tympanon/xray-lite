@@ -133,7 +133,7 @@ pub use crate::{
     context::{Context, InfallibleContext, IntoInfallibleContext, SubsegmentContext},
     epoch::Seconds,
     error::{Error, Result},
-    header::Header,
+    header::{Header, SamplingDecision},
     lambda::header,
     namespace::{AwsNamespace, CustomNamespace, Namespace, RemoteNamespace},
     segment::*,

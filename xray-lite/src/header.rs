@@ -8,6 +8,7 @@ use std::{
     str::FromStr,
 };
 
+/// The sampling decision as recorded in an [XRay tracing header](https://docs.aws.amazon.com/xray/latest/devguide/xray-concepts.html?shortFooter=true#xray-concepts-tracingheader)
 #[derive(PartialEq, Clone, Copy, Debug, Default)]
 pub enum SamplingDecision {
     /// Sampled indicates the current segment has been
