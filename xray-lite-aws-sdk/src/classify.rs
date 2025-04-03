@@ -74,7 +74,7 @@ macro_rules! first_with_name {
 pub type StandardLambdaIntercept = ClassifyAwsIntercept<DaemonClient, KnownServices, LambdaContextLookup>;
 
 /// A Smithy interceptor which publishes SDK trace segments to the lambda XRay daemon.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ClassifyAwsIntercept<C, I, L> 
     where C: XRayClient + 'static,
           I: RequestClassifier,
@@ -154,14 +154,14 @@ impl<C, I, L> Intercept for ClassifyAwsIntercept<C, I, L>
 /// segment from the lambda environment. Applications can provide their own implementation
 /// if there are custom segments in between the lambda invocation and SDK calls, for example
 /// captured by application tracing interceptors.
-pub trait ContextLookup: Debug + Send + Sync {
+pub trait ContextLookup: Clone + Debug + Send + Sync {
     /// Get the enclosing xray context for the caller.
     fn lookup_context<C: XRayClient>(&self, client: C) -> xray_lite::Result<SubsegmentContext<C>>;
 }
 
 /// The standard implementation of [`ContextLookup`], which reads the trace and segment
 /// identifiers from lambda environment variables.
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct LambdaContextLookup;
 impl ContextLookup for LambdaContextLookup {
     fn lookup_context<C: XRayClient>(&self, client: C) -> xray_lite::Result<SubsegmentContext<C>> {
@@ -170,7 +170,7 @@ impl ContextLookup for LambdaContextLookup {
 }
 
 /// A strategy to decode an outbound SDK request into an instance of [`AwsNamespace`].
-pub trait RequestClassifier: Debug + Send + Sync {
+pub trait RequestClassifier: Clone + Debug + Send + Sync {
     /// If possible, identify the AWS service and operation targeted by the request.
     /// ## Returns
     /// - Some if the request could be classified by this strategy
@@ -187,7 +187,7 @@ pub trait RequestClassifier: Debug + Send + Sync {
 /// Otherwise if the outbound request targets an S3 endpoint, the x-id parameter is used (if present).
 /// 
 /// Otherwise, None is returned.
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct KnownServices;
 impl RequestClassifier for KnownServices {
     fn classify_request(&self, request: &Request) -> Option<AwsNamespace> {
@@ -213,7 +213,7 @@ impl RequestClassifier for KnownServices {
 }
 
 /// An S3-specific namespace classifier that works with aws-sdk-s3 1.x.
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct S3RequestClassifier;
 impl S3RequestClassifier {
     /// Classify the given URL if it targets an S3 endpoint and specifies the 'x-id' parameter.
