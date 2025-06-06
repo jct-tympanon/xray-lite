@@ -1,6 +1,6 @@
 [package]
 name = "xray-lite-aws-sdk"
-version = "0.0.4"
+version = "0.0.5"
 authors = ["Kikuo Emoto <kemoto@codemonger.io>"]
 edition = "2021"
 description = "xray-lite extension for AWS SDK for Rust"
