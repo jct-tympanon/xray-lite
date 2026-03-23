@@ -1,5 +1,5 @@
 use crate::{epoch::Seconds, hexbytes::Bytes};
-use rand::RngCore;
+use rand::Rng;
 use serde::{de, ser, Serializer};
 use std::fmt;
 /// Coorelates a string of spans together
@@ -20,7 +20,7 @@ impl TraceId {
     /// Generate a new random trace ID
     pub fn new() -> Self {
         let mut buf = [0; 12];
-        rand::thread_rng().fill_bytes(&mut buf);
+        rand::rng().fill_bytes(&mut buf);
         TraceId::New(Seconds::now().trunc(), buf)
     }
 }

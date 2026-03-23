@@ -1,5 +1,5 @@
 use crate::hexbytes::Bytes;
-use rand::RngCore;
+use rand::Rng;
 use serde::{de, ser, Serializer};
 use std::fmt;
 
@@ -16,7 +16,7 @@ impl SegmentId {
     /// Generate a new random segment ID
     pub fn new() -> Self {
         let mut buf = [0; 8];
-        rand::thread_rng().fill_bytes(&mut buf);
+        rand::rng().fill_bytes(&mut buf);
         SegmentId::New(buf)
     }
 }
